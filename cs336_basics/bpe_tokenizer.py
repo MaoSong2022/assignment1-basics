@@ -14,7 +14,7 @@ class BPETokenizer:
         with open(file_path) as f:
             data = f.read()
 
-        chunks = re.split(r"<|endoftext\>", data)
+        chunks = re.split(r"<\|endoftext\|>", data)
         pattern = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
         pre_tokenized_chunks = [re.findall(pattern, chunk) for chunk in chunks]
         return pre_tokenized_chunks
