@@ -1,3 +1,4 @@
+from asyncio import new_event_loop
 import regex as re
 from collections import defaultdict
 
@@ -12,8 +13,11 @@ def pre_tokenize(file_path: str) -> list[list[str]]:
     return pre_tokenized_chunks
 
 
-def get_stats(splits: dict[bytes, list[bytes]], word_freqs: dict[bytes, int]) -> defaultdict[tuple[bytes, bytes], int]:
+def get_stats(
+    splits: dict[bytes, list[bytes]], word_freqs: dict[bytes, int]
+) -> tuple[defaultdict[tuple[bytes, bytes], int], defaultdict[tuple[bytes, bytes], set[bytes]]]:
     pair_freqs = defaultdict(int)
+    pair_to_word = defaultdict(set)
     for word, freq in word_freqs.items():
         split = splits[word]
         if len(split) == 1:
@@ -21,8 +25,8 @@ def get_stats(splits: dict[bytes, list[bytes]], word_freqs: dict[bytes, int]) ->
 
         for i in range(len(split) - 1):
             pair_freqs[(split[i], split[i + 1])] += freq
-
-    return pair_freqs
+            pair_to_word[(split[i], split[i + 1])].add(word)
+    return pair_freqs, pair_to_word
 
 
 def get_merge_pair(pair_freqs: defaultdict[tuple[bytes, bytes], int]) -> tuple[tuple[bytes, bytes], int]:
@@ -36,23 +40,57 @@ def get_merge_pair(pair_freqs: defaultdict[tuple[bytes, bytes], int]) -> tuple[t
     return best_pair, max_freq
 
 
-def merge_pairs(splits: dict[bytes, list[bytes]], merge_pair: tuple[bytes, bytes]) -> dict[bytes, list[bytes]]:
-    new_subword = merge_pair[0] + merge_pair[1]
-    for word in splits:
-        split = splits[word]
-        if len(split) == 1:
-            continue
+def merge_pairs(
+    splits: dict[bytes, list[bytes]],
+    merge_pair: tuple[bytes, bytes],
+    pair_freqs: defaultdict[tuple[bytes, bytes], int],
+    pair_to_words: defaultdict[tuple[bytes, bytes], set[bytes]],
+    word_freqs: dict[bytes, int],
+) -> dict[bytes, list[bytes]]:
+    token1, token2 = merge_pair
+    new_token = token1 + token2
+    words_to_update = list(pair_to_words[merge_pair])
 
-        if new_subword not in word:
+    if merge_pair in pair_freqs:
+        del pair_freqs[merge_pair]
+    if merge_pair in pair_to_words:
+        del pair_to_words[merge_pair]
+
+    for word in words_to_update:
+        split = splits[word]
+        freq_of_word = word_freqs[word]
+        if len(split) == 1:
             continue
 
         i = 0
         while i < len(split) - 1:
-            if split[i] == merge_pair[0] and split[i + 1] == merge_pair[1]:
-                split = split[:i] + [new_subword] + split[i + 2 :]
+            # Check if the current position and the next form the merge_pair
+            if split[i] == token1 and split[i + 1] == token2:
+                # Found an instance of the merge_pair
+
+                # 1. Decrement frequencies of old surrounding pairs
+                # (previous_token, token1)
+                if i > 0:
+                    prev_token = split[i - 1]
+                    old_left_pair = (prev_token, token1)
+                    pair_freqs[old_left_pair] -= freq_of_word
+                    new_left_pair = (prev_token, new_token)
+                    pair_freqs[new_left_pair] += freq_of_word
+                    pair_to_words[new_left_pair].add(word)
+
+                if i < len(split) - 2:
+                    next_token = split[i + 2]
+                    old_right_pair = (token2, next_token)
+                    pair_freqs[old_right_pair] -= freq_of_word
+                    new_right_pair = (new_token, next_token)
+                    pair_freqs[new_right_pair] += freq_of_word
+                    pair_to_words[new_right_pair].add(word)
+
+                split = split[:i] + [new_token] + split[i + 2 :]
             else:
                 i += 1
 
+        # Update the splits dictionary for this word
         splits[word] = split
 
     return splits
@@ -82,11 +120,12 @@ def train_bpe(
 
     splits = {word: [bytes([i]) for i in word] for word in word_freqs}
 
+    pair_freqs, pair_to_words = get_stats(splits, word_freqs)
+
     while len(vocab) < vocab_size:
-        pair_freqs = get_stats(splits, word_freqs)
         # find the best merge pair
         merge_pair, freq = get_merge_pair(pair_freqs)
-        splits = merge_pairs(splits, merge_pair)
+        splits = merge_pairs(splits, merge_pair, pair_freqs, pair_to_words, word_freqs)
         new_token_id = len(vocab)
         vocab[new_token_id] = merge_pair[0] + merge_pair[1]
         merges.append((merge_pair[0], merge_pair[1]))
