@@ -1,29 +1,12 @@
 import json
 import time
+import pytest
 
 from .adapters import run_train_bpe
 from .common import FIXTURES_PATH, gpt2_bytes_to_unicode
 
 
-def test_train_bpe_speed():
-    """
-    Ensure that BPE training is relatively efficient by measuring training
-    time on this small dataset and throwing an error if it takes more than 1.5 seconds.
-    This is a pretty generous upper-bound, it takes 0.38 seconds with the
-    reference implementation on my laptop. In contrast, the toy implementation
-    takes around 3 seconds.
-    """
-    input_path = FIXTURES_PATH / "corpus.en"
-    start_time = time.time()
-    _, _ = run_train_bpe(
-        input_path=input_path,
-        vocab_size=500,
-        special_tokens=["<|endoftext|>"],
-    )
-    end_time = time.time()
-    assert end_time - start_time < 1.5
-
-
+@pytest.mark.dependency(name="test_train_bpe")
 def test_train_bpe():
     input_path = FIXTURES_PATH / "corpus.en"
     vocab, merges = run_train_bpe(
@@ -62,6 +45,30 @@ def test_train_bpe():
     assert set(vocab.values()) == set(reference_vocab.values())
 
 
+@pytest.mark.dependency(depends=["test_train_bpe"])
+def test_train_bpe_speed():
+    """
+    Ensure that BPE training is relatively efficient by measuring training
+    time on this small dataset and throwing an error if it takes more than 1.5 seconds.
+    This is a pretty generous upper-bound, it takes 0.38 seconds with the
+    reference implementation on my laptop. In contrast, the toy implementation
+    takes around 3 seconds.
+    """
+    input_path = FIXTURES_PATH / "corpus.en"
+    start_time = time.time()
+    _, _ = run_train_bpe(
+        input_path=input_path,
+        vocab_size=500,
+        special_tokens=["<|endoftext|>"],
+    )
+
+    end_time = time.time()
+    duration = end_time - start_time
+    print(f"Duration: {duration}")
+    assert duration < 1.5
+
+
+@pytest.mark.dependency(depends=["test_train_bpe", "test_train_bpe_speed"])
 def test_train_bpe_special_tokens(snapshot):
     """
     Ensure that the special tokens are added to the vocabulary and not
