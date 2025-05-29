@@ -21,6 +21,7 @@ dependencies = [
     "pytest-dependency>=0.6.0",
     "loguru>=0.7.3",
     "pyinstrument>=5.0.1",
+    "ruff>=0.11.11",
 ]
 
 
@@ -51,3 +52,8 @@ extend-select = ["UP"]
 ignore = [
     "F722"
 ]
+
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default=true
+
