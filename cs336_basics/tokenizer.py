@@ -25,6 +25,13 @@ class Tokenizer:
 
         self.inverse_vocab = {v: k for k, v in self.vocab.items()}
 
+        self.general_pattern = re.compile(r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""")
+        sorted_special_tokens = sorted(self.special_tokens, key=len, reverse=True)
+        if self.special_tokens:
+            self.special_token_pattern = re.compile(r"|".join(re.escape(token) for token in sorted_special_tokens))
+        else:
+            self.special_token_pattern = None
+
     @classmethod
     def from_file(
         cls, vocab_filepath: str, merges_filepath: str, special_tokens: list[str] | None = None
@@ -35,34 +42,26 @@ class Tokenizer:
             merges = [tuple(line.split()) for line in f.readlines()]
         return cls(vocab, merges, special_tokens)
 
-    def pre_tokenize(self, text: str) -> list[str]:
+    def pre_tokenize(self, text: str) -> Generator[str, None, None]:
         #  process special tokens
-        chunks = []
         last_end = 0
 
         # Sort special tokens by length in descending order to match longer tokens first
         if self.special_tokens:
-            sorted_special_tokens = sorted(self.special_tokens, key=len, reverse=True)
-            special_token_pattern = re.compile(r"|".join(re.escape(token) for token in sorted_special_tokens))
-            for match in special_token_pattern.finditer(text):
+            for match in self.special_token_pattern.finditer(text):
                 if match.start() > last_end:
-                    chunks.append(text[last_end : match.start()])
-                chunks.append(match.group(0))
+                    non_special_chunk = text[last_end : match.start()]
+                    for sub_match in self.general_pattern.finditer(non_special_chunk):
+                        yield sub_match.group(0)
+                yield match.group(0)
                 last_end = match.end()
             if last_end < len(text):
-                chunks.append(text[last_end:])
+                remaining_text = text[last_end:]
+                for sub_match in self.general_pattern.finditer(remaining_text):
+                    yield sub_match.group(0)
         else:
-            chunks = [text]
-
-        result = []
-        pattern = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-        for chunk in chunks:
-            if chunk in self.special_tokens:
-                result.append(chunk)
-            else:
-                pre_tokenized_chunks = re.findall(pattern, chunk)
-                result.extend(pre_tokenized_chunks)
-        return result
+            for sub_match in self.general_pattern.finditer(text):
+                yield sub_match.group(0)
 
     def encode(self, text: str) -> list[int]:
         pre_tokenized_chunks = self.pre_tokenize(text)
