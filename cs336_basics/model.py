@@ -124,9 +124,10 @@ def scaled_dot_product_attention(
     mask: torch.Tensor | None = None,
 ) -> torch.Tensor:
     d_k = Q.shape[-1]
-    scores = einsum(Q, K, "b ... s_q d_k, b ... s_k d_k -> b ... s_q s_k")
-    scores = scores / d_k ** 0.5
+    scaled_factor = 1 / d_k ** 0.5
+    scores = einsum(Q, K, "... s_q d_k, ... s_k d_k -> ... s_q s_k")
+    scores = scores * scaled_factor
     if mask is not None:
         scores = scores.masked_fill(mask == 0, float("-inf"))
     scores = scores.softmax(dim=-1)
-    return einsum(scores, V, "b ... s_q s_k, b ... s_k d_v -> b ... s_q d_v")
+    return einsum(scores, V, "... s_q s_k, ... s_k d_v -> ... s_q d_v")
