@@ -53,11 +53,7 @@ class SwiGLU(nn.Module):
         self.W2 = Linear(d_ff, d_model)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        gate_score = einsum(x, self.W1, "... d_model, d_model d_ff -> ... d_ff")
-        up_proj = utils.SiLU(gate_score) * einsum(x, self.W3, "... d_model, d_model d_ff -> ... d_ff")
-        down_proj = einsum(up_proj, self.W2, "... d_ff, d_ff d_model -> ... d_model")
-
-        return down_proj
+        return self.W2(utils.SiLU(self.W1(x)) * self.W3(x))
 
 
 class RotaryPositionEmbedding(nn.Module):
