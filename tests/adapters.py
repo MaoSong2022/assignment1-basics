@@ -31,7 +31,7 @@ def run_linear(
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
     linear_layer = model.Linear(d_in, d_out)
-    linear_layer.load_state_dict({"W": weights})
+    linear_layer.load_state_dict({"weight": weights})
     return linear_layer(in_features)
 
 
@@ -54,7 +54,7 @@ def run_embedding(
         Float[Tensor, "... d_model"]: Batch of embeddings returned by your Embedding layer.
     """
     embedding_layer = model.Embedding(vocab_size, d_model)
-    embedding_layer.load_state_dict({"W": weights})
+    embedding_layer.load_state_dict({"weight": weights})
 
     return embedding_layer(token_ids)
 
@@ -89,7 +89,7 @@ def run_swiglu(
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
     swiglu_layer = model.SwiGLU(d_model, d_ff)
-    swiglu_layer.load_state_dict({"W1.W": w1_weight, "W2.W": w2_weight, "W3.W": w3_weight})
+    swiglu_layer.load_state_dict({"W1.weight": w1_weight, "W2.weight": w2_weight, "W3.weight": w3_weight})
     return swiglu_layer(in_features)
 
 
