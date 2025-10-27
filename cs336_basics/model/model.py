@@ -84,23 +84,58 @@ def scaled_dot_product_attention(
 class MultiHeadAttention(nn.Module):
     def __init__(self, d_model: int, num_heads: int):
         super().__init__()
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.q_proj = Linear(d_model, d_model)
+        self.k_proj = Linear(d_model, d_model)
+        self.v_proj = Linear(d_model, d_model)
+        self.o_proj = Linear(d_model, d_model)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        pass
+        q = self.q_proj(x)
+        k = self.k_proj(x)
+        v = self.v_proj(x)
+        q = rearrange(
+            q,
+            "... seq_len (num_heads d_head) -> ... num_heads seq_len d_head",
+            num_heads=self.num_heads,
+            d_head=self.d_model // self.num_heads,
+        )
+        k = rearrange(
+            k,
+            "... seq_len (num_heads d_head) -> ... num_heads seq_len d_head",
+            num_heads=self.num_heads,
+            d_head=self.d_model // self.num_heads,
+        )
+        v = rearrange(
+            v,
+            "... seq_len (num_heads d_head) -> ... num_heads seq_len d_head",
+            num_heads=self.num_heads,
+            d_head=self.d_model // self.num_heads,
+        )
+
+        mask = torch.tril(torch.ones(q.shape[-2], q.shape[-2]))
+
+        attn_output = scaled_dot_product_attention(q, k, v, mask=mask)
+        attn_output = rearrange(
+            attn_output,
+            "... num_heads seq_len d_head -> ... seq_len (num_heads d_head)"
+        )
+        return self.o_proj(attn_output)
 
 
 class DecodeLayer(nn.Module):
     def __init__(self, d_model: int, num_heads: int, d_ff: int):
         super().__init__()
         self.pre_norm = RMSNorm(d_model)
-        self.attention = MultiHeadAttention(d_model, num_heads)
+        self.attn = MultiHeadAttention(d_model, num_heads)
         self.post_norm = RMSNorm(d_model)
         self.FFN = SwiGLU(d_model, d_ff)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         residual = x
         x = self.pre_norm(x)
-        x = self.attention(x)
+        x = self.attn(x)
         x = x + residual
 
         residual = x
