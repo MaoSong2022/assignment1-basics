@@ -84,8 +84,17 @@ def apply_rotary_pos_emb(x, cos, sin) -> torch.Tensor:
 
 
 def scaled_dot_product_attention(
-    q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: torch.Tensor | None
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    mask: torch.Tensor | None,
+    cos: torch.Tensor = None,
+    sin: torch.Tensor = None,
 ) -> torch.Tensor:
+    if cos is not None and sin is not None:
+        q = apply_rotary_pos_emb(q, cos, sin)
+        k = apply_rotary_pos_emb(k, cos, sin)
+
     attention_score = einsum(q, k, "... queries d_k, ... keys d_k -> ... queries keys")
     scale = math.sqrt(q.shape[-1])
     if mask is not None:
@@ -106,7 +115,7 @@ class MultiHeadAttention(nn.Module):
         self.v_proj = Linear(d_model, d_model)
         self.o_proj = Linear(d_model, d_model)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, cos: torch.Tensor = None, sin: torch.Tensor = None) -> torch.Tensor:
         q = self.q_proj(x)
         k = self.k_proj(x)
         v = self.v_proj(x)
@@ -131,11 +140,8 @@ class MultiHeadAttention(nn.Module):
 
         mask = torch.tril(torch.ones(q.shape[-2], q.shape[-2]))
 
-        attn_output = scaled_dot_product_attention(q, k, v, mask=mask)
-        attn_output = rearrange(
-            attn_output,
-            "... num_heads seq_len d_head -> ... seq_len (num_heads d_head)"
-        )
+        attn_output = scaled_dot_product_attention(q, k, v, mask=mask, cos=cos, sin=sin)
+        attn_output = rearrange(attn_output, "... num_heads seq_len d_head -> ... seq_len (num_heads d_head)")
         return self.o_proj(attn_output)
 
 
