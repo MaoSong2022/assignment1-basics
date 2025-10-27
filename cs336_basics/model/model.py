@@ -59,13 +59,28 @@ class SwiGLU(nn.Module):
 class RotaryPositionEmbedding(nn.Module):
     def __init__(self, theta: float, d_k: int, max_seq_len: int):
         super().__init__()
+        self.base = theta
+        self.dim = d_k
+        inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2).float() / self.dim))
+        self.register_buffer("inv_freq", inv_freq)
+
+        self.max_seq_len = max_seq_len
 
     def forward(self, x: torch.Tensor, token_positions: torch.Tensor) -> torch.Tensor:
-        pass
+        t = token_positions.float()
+        freqs = einsum(t, self.inv_freq, "... i, j -> ... i j")
+        return freqs.cos(), freqs.sin()
 
 
-def apply_rotary_pos_emb(q, k, cos, sin, position_ids) -> tuple[torch.Tensor, torch.Tensor]:
-    pass
+def apply_rotary_pos_emb(x, cos, sin) -> torch.Tensor:
+    x_even = x[..., ::2]  # (seq_len, d_k//2)
+    x_odd = x[..., 1::2]  # (seq_len, d_k//2)
+    odds = cos * x_even - sin * x_odd
+    evens = sin * x_even + cos * x_odd
+    stacked = torch.stack((odds, evens), dim=-2)  # (seq_len, d_k//2, 2)
+    stacked_trans = rearrange(stacked, "... double d_k_half -> ... d_k_half double")  # (seq_len, 2, d_k//2)
+    out = rearrange(stacked_trans, "... d_k_half double -> ... (d_k_half double)")
+    return out
 
 
 def scaled_dot_product_attention(

@@ -177,7 +177,9 @@ def run_rope(
     Returns:
         Float[Tensor, " ... sequence_length d_k"]: Tensor with RoPEd input.
     """
-    raise NotImplementedError
+    rotary_embedding = model.RotaryPositionEmbedding(theta, d_k, max_seq_len)
+    cos, sin = rotary_embedding(in_query_or_key, token_positions)
+    return model.apply_rotary_pos_emb(in_query_or_key, cos, sin)
 
 
 def run_multihead_self_attention_with_rope(
