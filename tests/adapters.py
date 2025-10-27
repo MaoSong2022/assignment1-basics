@@ -10,7 +10,8 @@ import torch
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
 
-from cs336_basics.model import model, utils
+from cs336_basics.model import model
+from cs336_basics.model import utils as model_utils
 
 
 def run_linear(
@@ -426,7 +427,7 @@ def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
         Float[Tensor,"..."]: of with the same shape as `in_features` with the output of applying
         SiLU to each element.
     """
-    raise NotImplementedError
+    return model_utils.SiLU(in_features)
 
 
 def run_get_batch(
