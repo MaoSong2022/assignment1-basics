@@ -68,8 +68,16 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids) -> tuple[torch.Tensor, to
     pass
 
 
-def scaled_dot_product_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-    pass
+def scaled_dot_product_attention(
+    q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: torch.Tensor | None
+) -> torch.Tensor:
+    attention_score = einsum(q, k, "... queries d_k, ... keys d_k -> ... queries keys")
+    if mask is not None:
+        attention_score.masked_fill_(mask == 0, float("-inf"))
+
+    attention_weight = utils.softmax(attention_score, dim=-1)
+
+    return einsum(attention_weight, v, "... queries keys, ... keys d_v -> ... queries d_v")
 
 
 class MultiHeadAttention(nn.Module):
