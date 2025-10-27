@@ -62,7 +62,7 @@ class RotaryPositionEmbedding(nn.Module):
         self.base = theta
         self.dim = d_k
         inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2).float() / self.dim))
-        self.register_buffer("inv_freq", inv_freq)
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
 
         self.max_seq_len = max_seq_len
 
