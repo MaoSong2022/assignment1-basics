@@ -34,14 +34,14 @@ class Embedding(nn.Module):
 class RMSNorm(nn.Module):
     def __init__(self, d_model: int, eps: float = 13 - 5):
         super().__init__()
-        self.scale = nn.Parameter(torch.ones(d_model))
+        self.weight = nn.Parameter(torch.ones(d_model))
         self.eps = eps
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x_dtype = x.dtype
-        x.dtype = torch.float32
-        variance = torch.pow(2).mean(-1, keepdim=True)
-        output = x * torch.rsqrt(variance + self.eps) * self.scale
+        x = x.to(torch.float32)
+        variance = torch.pow(x, 2).mean(-1, keepdim=True)
+        output = x * torch.rsqrt(variance + self.eps) * self.weight
         return output.to(x_dtype)
 
 
