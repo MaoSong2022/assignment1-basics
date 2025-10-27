@@ -48,12 +48,12 @@ class RMSNorm(nn.Module):
 class SwiGLU(nn.Module):
     def __init__(self, d_model: int, d_ff: int):
         super().__init__()
-        self.W1 = Linear(d_model, d_ff)
-        self.W3 = Linear(d_model, d_ff)
-        self.W2 = Linear(d_ff, d_model)
+        self.w1 = Linear(d_model, d_ff)
+        self.w3 = Linear(d_model, d_ff)
+        self.w2 = Linear(d_ff, d_model)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.W2(utils.SiLU(self.W1(x)) * self.W3(x))
+        return self.w2(utils.SiLU(self.w1(x)) * self.w3(x))
 
 
 class RotaryPositionEmbedding(nn.Module):
@@ -113,7 +113,7 @@ class MultiHeadAttention(nn.Module):
         self.q_proj = Linear(d_model, d_model)
         self.k_proj = Linear(d_model, d_model)
         self.v_proj = Linear(d_model, d_model)
-        self.o_proj = Linear(d_model, d_model)
+        self.output_proj = Linear(d_model, d_model)
 
     def forward(self, x: torch.Tensor, cos: torch.Tensor = None, sin: torch.Tensor = None) -> torch.Tensor:
         q = self.q_proj(x)
@@ -142,7 +142,7 @@ class MultiHeadAttention(nn.Module):
 
         attn_output = scaled_dot_product_attention(q, k, v, mask=mask, cos=cos, sin=sin)
         attn_output = rearrange(attn_output, "... num_heads seq_len d_head -> ... seq_len (num_heads d_head)")
-        return self.o_proj(attn_output)
+        return self.output_proj(attn_output)
 
 
 class DecodeLayer(nn.Module):
