@@ -168,23 +168,28 @@ class DecodeLayer(nn.Module):
 
 
 class Model(nn.Module):
-    def __init__(self, vocab_size: int, context_length: int, num_layers: int, d_model: int, num_heads: int, d_ff: int):
+    def __init__(
+        self, vocab_size: int, num_layers: int, d_model: int, num_heads: int, d_ff: int, max_seq_len: int, theta: float
+    ):
         super().__init__()
 
-        self.embedding = Embedding(vocab_size, d_model)
+        self.token_embeddings = Embedding(vocab_size, d_model)
         self.layers = nn.ModuleList([DecodeLayer(d_model, num_heads, d_ff) for _ in range(num_layers)])
-        self.norm = RMSNorm(d_model)
+        self.ln_final = RMSNorm(d_model)
         self.lm_head = Linear(d_model, vocab_size)
 
+        d_heads = d_model // num_heads
+        self.rotary_embedding = RotaryPositionEmbedding(theta, d_heads, max_seq_len)
+
     def forward(self, token_ids) -> torch.Tensor:
-        hidden_states = self.embedding(token_ids)
+        hidden_states = self.token_embeddings(token_ids)
+        token_positions = torch.arange(hidden_states.shape[-2])
+        cos, sin = self.rotary_embedding(hidden_states, token_positions)
 
-        for decode_layer in self.layerss:
-            hidden_states = decode_layer(hidden_states)
+        for decode_layer in self.layers:
+            hidden_states = decode_layer(hidden_states, cos, sin)
 
-        hidden_states = self.norm(hidden_states)
+        hidden_states = self.ln_final(hidden_states)
         logits = self.lm_head(hidden_states)
 
-        probs = utils.softmax(logits)
-
-        return probs
+        return logits
