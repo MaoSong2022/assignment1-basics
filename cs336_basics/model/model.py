@@ -148,20 +148,20 @@ class MultiHeadAttention(nn.Module):
 class DecodeLayer(nn.Module):
     def __init__(self, d_model: int, num_heads: int, d_ff: int):
         super().__init__()
-        self.pre_norm = RMSNorm(d_model)
+        self.ln1 = RMSNorm(d_model)
         self.attn = MultiHeadAttention(d_model, num_heads)
-        self.post_norm = RMSNorm(d_model)
-        self.FFN = SwiGLU(d_model, d_ff)
+        self.ln2 = RMSNorm(d_model)
+        self.ffn = SwiGLU(d_model, d_ff)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, cos: torch.Tensor = None, sin: torch.Tensor = None) -> torch.Tensor:
         residual = x
-        x = self.pre_norm(x)
-        x = self.attn(x)
+        x = self.ln1(x)
+        x = self.attn(x, cos, sin)
         x = x + residual
 
         residual = x
-        x = self.post_norm(x)
-        x = self.FFN(x)
+        x = self.ln2(x)
+        x = self.ffn(x)
         x = x + residual
 
         return x

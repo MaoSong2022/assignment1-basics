@@ -306,7 +306,13 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    d_head = d_model // num_heads
+    rotary_embedding = model.RotaryPositionEmbedding(theta, d_head, max_seq_len)
+    decode_layer = model.DecodeLayer(d_model, num_heads, d_ff)
+    decode_layer.load_state_dict(weights)
+
+    cos, sin = rotary_embedding(in_features, torch.arange(in_features.shape[-2]))
+    return decode_layer(in_features, cos, sin)
 
 
 def run_transformer_lm(
