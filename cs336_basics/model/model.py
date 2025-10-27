@@ -72,10 +72,11 @@ def scaled_dot_product_attention(
     q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: torch.Tensor | None
 ) -> torch.Tensor:
     attention_score = einsum(q, k, "... queries d_k, ... keys d_k -> ... queries keys")
+    scale = math.sqrt(q.shape[-1])
     if mask is not None:
         attention_score.masked_fill_(mask == 0, float("-inf"))
 
-    attention_weight = utils.softmax(attention_score, dim=-1)
+    attention_weight = utils.softmax(attention_score / scale, dim=-1)
 
     return einsum(attention_weight, v, "... queries keys, ... keys d_v -> ... queries d_v")
 
