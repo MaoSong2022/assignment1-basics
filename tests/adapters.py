@@ -12,6 +12,7 @@ from torch import Tensor
 
 from cs336_basics.model import model
 from cs336_basics.model import utils as model_utils
+from cs336_basics.tokenizer.train_bpe import train_bpe
 
 
 def run_linear(
@@ -640,4 +641,5 @@ def run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    raise NotImplementedError
+    vocab, merges = train_bpe(input_path, vocab_size, special_tokens)
+    return vocab, merges

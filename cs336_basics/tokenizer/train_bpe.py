@@ -1,169 +1,114 @@
-from collections import Counter
 import multiprocessing
-import regex as re
 import os
+import regex as re
 from typing import BinaryIO
+from collections import Counter
 
 
-def find_chunk_boundaries(
-    file: BinaryIO,
-    desired_num_chunks: int,
-    split_special_token: bytes,
-) -> list[int]:
-    """
-    Chunk the file into parts that can be counted independently.
-    May return fewer chunks if the boundaries end up overlapping.
-    """
+def find_chunk_boundaries(file: BinaryIO, desired_num_chunks: int, split_special_token: bytes) -> list[int]:
     assert isinstance(split_special_token, bytes), "Must represent special token as a bytestring"
-
-    # Get total file size in bytes
     file.seek(0, os.SEEK_END)
     file_size = file.tell()
     file.seek(0)
-
-    chunk_size = file_size // desired_num_chunks
-
-    # Initial guesses for chunk boundary locations, uniformly spaced
-    # Chunks start on previous index, don't include last index
-    chunk_boundaries = [i * chunk_size for i in range(desired_num_chunks + 1)]
-    chunk_boundaries[-1] = file_size
-
-    mini_chunk_size = 4096  # Read ahead by 4k bytes at a time
-
-    for bi in range(1, len(chunk_boundaries) - 1):
-        initial_position = chunk_boundaries[bi]
-        file.seek(initial_position)  # Start at boundary guess
+    chunk_size = max(1, file_size // desired_num_chunks)
+    bounds = [i * chunk_size for i in range(desired_num_chunks + 1)]
+    bounds[-1] = file_size
+    mini = 4096  # 4k scan step (bigger save syscall)
+    for bi in range(1, len(bounds) - 1):
+        pos = bounds[bi]
+        file.seek(pos)
         while True:
-            mini_chunk = file.read(mini_chunk_size)  # Read a mini chunk
-
-            # If EOF, this boundary should be at the end of the file
-            if mini_chunk == b"":
-                chunk_boundaries[bi] = file_size
+            buf = file.read(mini)
+            if not buf:
+                bounds[bi] = file_size
                 break
-
-            # Find the special token in the mini chunk
-            found_at = mini_chunk.find(split_special_token)
-            if found_at != -1:
-                chunk_boundaries[bi] = initial_position + found_at
+            found = buf.find(split_special_token)
+            if found != -1:
+                bounds[bi] = pos + found
                 break
-            initial_position += mini_chunk_size
-
-    # Make sure all boundaries are unique, but might be fewer than desired_num_chunks
-    return sorted(set(chunk_boundaries))
+            pos += len(buf)
+    return sorted(set(bounds))
 
 
-def split_into_chunks(input_path: str, delimiter: bytes, special_tokens: list[str]) -> list[bytes]:
-    chunks = []
-    special_token_bytes = [token.encode("utf-8") for token in special_tokens]
-    # from longest to shortest
-    special_token_bytes.sort(key=lambda x: len(x), reverse=True)
-    splitting_patten = b"|".join(re.escape(special_token) for special_token in special_token_bytes)
-    compiled_pattern = re.compile(splitting_patten)
-    with open(input_path, "rb") as f:
-        num_processes = 4
-        boundaries = find_chunk_boundaries(f, num_processes, delimiter)
+def process_chunk(args: tuple[str, int, int, list[str]]) -> Counter[tuple[int]]:
+    GPT2_PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
-        for start, end in zip(boundaries[:-1], boundaries[1:]):
-            f.seek(start)
-            chunk_bytes = f.read(end - start)
+    input_path, start, end, special_tokens = args
+    with open(input_path, "rb") as file:
+        file.seek(start)
+        chunk = file.read(end - start).decode("utf-8", errors="ignore")
+    # remove special tokens
+    pattern = "|".join(re.escape(token) for token in special_tokens)
+    documents = re.split(pattern, chunk)
 
-            split_parts = compiled_pattern.split(chunk_bytes)
-            for part in split_parts:
-                if not part:
-                    continue
-                chunks.append(part)
-
-    return chunks
+    # 2. split into words with GPT2 regex
+    word_bytes = Counter()
+    for doc in documents:
+        tokens = [match.group(0).encode("utf-8") for match in re.finditer(GPT2_PAT, doc)]
+        word_bytes.update([tuple(token) for token in tokens])
+    return word_bytes
 
 
-def split_into_words(chunk: bytes) -> Counter[bytes]:
-    GPT2_PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""".encode("utf-8")
-    words = re.findall(GPT2_PAT, chunk)
-    return Counter(words)
+def compute_pair_counts(word_bytes_freqs: dict[tuple[int], int]) -> Counter[tuple[int, int]]:
+    counts = Counter()
+    for word_bytes, freq in word_bytes_freqs.items():
+        for pair in zip(word_bytes, word_bytes[1:]):
+            counts[pair] += freq
+    return counts
 
 
-def pre_tokenize(chunks: list[bytes]) -> dict[bytes, int]:
-    word_freqs = Counter()
-
-    # TODO: use multiprocessing to optimize the process
-    with multiprocessing.Pool(processes=10) as p:
-        results = p.map(split_into_words, chunks)
-
-    for result in results:
-        word_freqs += result
-
-    return dict(word_freqs)
-
-
-def count_pair_freqs(word_freqs: dict[tuple[int], int]) -> dict[tuple[int, int], int]:
-    pair_freqs = Counter()
-    for word, freq in word_freqs.items():
-        pair_freqs.update({x: freq for x in zip(word, word[1:])})
-
-    return dict(pair_freqs)
-
-
-def merge_pairs(
-    word_freqs: dict[list[int], int], token_pair: tuple[int, int], new_token_id: int
-) -> dict[list[int], int]:
-    new_pair_freqs = {}
-
-    for token, freq in word_freqs.items():
-        i = 0
-        new_token = []
-        while i < len(token):
-            if i < len(token) - 1 and (token[i], token[i + 1]) == token_pair:
-                new_token.append(new_token_id)
-                i += 2
-            else:
-                new_token.append(token[i])
-                i += 1
-
-        new_pair_freqs[tuple(new_token)] = freq
-
-    return new_pair_freqs
+def merge_pair(token_ids: tuple[int], pair: tuple[int, int], new_id: int) -> tuple[int]:
+    new_token_ids = []
+    i = 0
+    while i < len(token_ids):
+        if i < len(token_ids) - 1 and (token_ids[i], token_ids[i + 1]) == pair:
+            new_token_ids.append(new_id)
+            i += 2
+        else:
+            new_token_ids.append(token_ids[i])
+            i += 1
+    return tuple(new_token_ids)
 
 
 def train_bpe(
-    input_path: str, vocab_size: int, special_tokens: list[str]
+    input_path: str, vocab_size: int, special_tokens: list[str], num_processes: int = 8
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
-    # split doc into chunks based on special token
-    chunks = split_into_chunks(
-        input_path=input_path, delimiter="<|endoftext|>".encode("utf-8"), special_tokens=special_tokens
-    )
-
-    print(f"len of chunks: {len(chunks)}")
-
-    # compute word frequencies in bytes
-    word_freqs = pre_tokenize(chunks)
-
-    # compute word frequencies in int
-    word_freqs = {tuple(word): freq for word, freq in word_freqs.items()}
-
-    # initialize vocabulary
+    # initialize vocab and merge
     vocab = {i: bytes([i]) for i in range(256)}
-
-    # add special tokens
-    for i, special_token in enumerate(special_tokens):
-        vocab[256 + i] = special_token.encode("utf-8")
-
     merges = []
+    for tok in special_tokens:
+        vocab[len(vocab)] = tok.encode("utf-8")
 
-    token_index = len(vocab)
-    while token_index < vocab_size:
-        # compute frequency of pairs
-        pair_freqs = count_pair_freqs(word_freqs)
+    # pre-tokenization
+    with open(input_path, "rb") as f:
+        boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
 
-        # select new token
-        token_pair = max(pair_freqs, key=lambda k: (pair_freqs[k], vocab[k[0]], vocab[k[1]]))
-        merges.append((vocab[token_pair[0]], vocab[token_pair[1]]))
+    chunk_args = [(input_path, start, end, special_tokens) for start, end in zip(boundaries, boundaries[1:])]
+    with multiprocessing.Pool(processes=num_processes) as pool:
+        chunk_results = pool.map(process_chunk, chunk_args)
 
-        print(token_index, f"({vocab[token_pair[0]]}, {vocab[token_pair[1]]}), freqs: {pair_freqs[token_pair]}")
-        vocab[token_index] = vocab[token_pair[0]] + vocab[token_pair[1]]
+    # get word frequencies in bytes form
+    word_bytes_freqs = Counter()  # dict[tuple[int], int]
+    for chunk_result in chunk_results:
+        word_bytes_freqs.update(chunk_result)
 
-        # merge pairs
-        word_freqs = merge_pairs(word_freqs, token_pair, token_index)
-        token_index += 1
+    vocab_index = len(vocab)
+    while vocab_index < vocab_size:
+        counts = compute_pair_counts(word_bytes_freqs)  # dict[tuple[int, int], int]
+        max_pair = max(counts, key=lambda pair: (counts[pair], vocab[pair[0]], vocab[pair[1]]))
 
+        # add to vocab
+        vocab[vocab_index] = vocab[max_pair[0]] + vocab[max_pair[1]]
+        merges.append((vocab[max_pair[0]], vocab[max_pair[1]]))
+
+        # update word_bytes
+        new_word_bytes_freqs = Counter()
+        for word_byte, freq in word_bytes_freqs.items():
+            new_word_byte = merge_pair(word_byte, max_pair, vocab_index)
+            new_word_bytes_freqs[new_word_byte] += freq
+        word_bytes_freqs = new_word_bytes_freqs
+
+        # update vocab index
+        vocab_index += 1
 
     return vocab, merges
