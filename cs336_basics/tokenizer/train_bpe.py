@@ -2,7 +2,7 @@ import multiprocessing
 import os
 import regex as re
 from typing import BinaryIO
-from collections import Counter
+from collections import Counter, defaultdict
 
 
 def find_chunk_boundaries(file: BinaryIO, desired_num_chunks: int, split_special_token: bytes) -> list[int]:
@@ -49,25 +49,56 @@ def process_chunk(args: tuple[str, int, int, list[str]]) -> Counter[tuple[int]]:
     return word_bytes
 
 
-def compute_pair_counts(word_bytes_freqs: dict[tuple[int], int]) -> Counter[tuple[int, int]]:
+def compute_pair_counts(
+    word_bytes_freqs: dict[tuple[int], int],
+) -> tuple[Counter[tuple[int, int]], defaultdict[tuple[int, int], list[tuple[int]]]]:
     counts = Counter()
+    pair_to_words = defaultdict(list)
     for word_bytes, freq in word_bytes_freqs.items():
         for pair in zip(word_bytes, word_bytes[1:]):
             counts[pair] += freq
+            pair_to_words[pair].append(word_bytes)
+    return counts, pair_to_words
+
+
+def merge_pair(
+    max_pair: tuple[int, int],
+    new_token_id: int,
+    counts: Counter[tuple[int, int]],
+    pair_to_words: defaultdict[tuple[int, int], list[tuple[int]]],
+    word_bytes_freqs: Counter[tuple[int]],
+) -> Counter[tuple[int, int]]:
+    old_words = list(pair_to_words[max_pair])
+    for word in old_words:
+        # remove old words
+        old_freq = word_bytes_freqs[word]
+        del word_bytes_freqs[word]
+        for pair in zip(word, word[1:]):
+            if word not in pair_to_words[pair]:
+                continue
+            pair_to_words[pair].remove(word)
+            counts[pair] -= old_freq
+
+        # create new word
+        i = 0
+        new_token_ids = []
+        while i < len(word):
+            if i < len(word) - 1 and (word[i], word[i + 1]) == max_pair:
+                new_token_ids.append(new_token_id)
+                i += 2
+            else:
+                new_token_ids.append(word[i])
+                i += 1
+        new_word = tuple(new_token_ids)
+
+        # update related information
+        word_bytes_freqs[new_word] += old_freq
+        for pair in zip(new_token_ids, new_token_ids[1:]):
+            counts[pair] += old_freq
+            pair_to_words[pair].append(new_word)
+
+    del pair_to_words[max_pair]
     return counts
-
-
-def merge_pair(token_ids: tuple[int], pair: tuple[int, int], new_id: int) -> tuple[int]:
-    new_token_ids = []
-    i = 0
-    while i < len(token_ids):
-        if i < len(token_ids) - 1 and (token_ids[i], token_ids[i + 1]) == pair:
-            new_token_ids.append(new_id)
-            i += 2
-        else:
-            new_token_ids.append(token_ids[i])
-            i += 1
-    return tuple(new_token_ids)
 
 
 def train_bpe(
@@ -76,8 +107,8 @@ def train_bpe(
     # initialize vocab and merge
     vocab = {i: bytes([i]) for i in range(256)}
     merges = []
-    for tok in special_tokens:
-        vocab[len(vocab)] = tok.encode("utf-8")
+    for token in special_tokens:
+        vocab[len(vocab)] = token.encode("utf-8")
 
     # pre-tokenization
     with open(input_path, "rb") as f:
@@ -92,9 +123,10 @@ def train_bpe(
     for chunk_result in chunk_results:
         word_bytes_freqs.update(chunk_result)
 
+    counts, pair_to_words = compute_pair_counts(word_bytes_freqs)  # dict[tuple[int, int], int]
+
     vocab_index = len(vocab)
     while vocab_index < vocab_size:
-        counts = compute_pair_counts(word_bytes_freqs)  # dict[tuple[int, int], int]
         max_pair = max(counts, key=lambda pair: (counts[pair], vocab[pair[0]], vocab[pair[1]]))
 
         # add to vocab
@@ -102,11 +134,7 @@ def train_bpe(
         merges.append((vocab[max_pair[0]], vocab[max_pair[1]]))
 
         # update word_bytes
-        new_word_bytes_freqs = Counter()
-        for word_byte, freq in word_bytes_freqs.items():
-            new_word_byte = merge_pair(word_byte, max_pair, vocab_index)
-            new_word_bytes_freqs[new_word_byte] += freq
-        word_bytes_freqs = new_word_bytes_freqs
+        counts = merge_pair(max_pair, vocab_index, counts, pair_to_words, word_bytes_freqs)
 
         # update vocab index
         vocab_index += 1
