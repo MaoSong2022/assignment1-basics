@@ -14,6 +14,7 @@ from cs336_basics.model import model
 from cs336_basics.model import utils as model_utils
 from cs336_basics.tokenizer.train_bpe import train_bpe
 from cs336_basics.tokenizer.tokenizer import BPETokenizer
+from cs336_basics.train.data import get_batch
 from cs336_basics.train.optimizer import AdamW, get_lr_cosine_schedule
 
 def run_linear(
@@ -468,7 +469,7 @@ def run_get_batch(
         is the sampled input sequences, and the second tuple item is the corresponding
         language modeling labels.
     """
-    raise NotImplementedError
+    return get_batch(dataset, batch_size, context_length, device)
 
 
 def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:
