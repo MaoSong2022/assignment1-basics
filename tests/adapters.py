@@ -14,7 +14,7 @@ from cs336_basics.model import model
 from cs336_basics.model import utils as model_utils
 from cs336_basics.tokenizer.train_bpe import train_bpe
 from cs336_basics.tokenizer.tokenizer import BPETokenizer
-
+from cs336_basics.train.optimizer import AdamW, get_lr_cosine_schedule
 
 def run_linear(
     d_in: int,
@@ -521,7 +521,7 @@ def get_adamw_cls() -> Any:
     """
     Returns a torch.optim.Optimizer that implements AdamW.
     """
-    raise NotImplementedError
+    return AdamW
 
 
 def run_get_lr_cosine_schedule(
@@ -549,7 +549,7 @@ def run_get_lr_cosine_schedule(
     Returns:
         Learning rate at the given iteration under the specified schedule.
     """
-    raise NotImplementedError
+    return get_lr_cosine_schedule(it, max_learning_rate, min_learning_rate, warmup_iters, cosine_cycle_iters)
 
 
 def run_save_checkpoint(
