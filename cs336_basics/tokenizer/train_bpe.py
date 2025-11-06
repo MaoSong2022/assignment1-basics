@@ -3,6 +3,7 @@ import os
 import regex as re
 from typing import BinaryIO
 from collections import Counter, defaultdict
+import tqdm
 
 
 def find_chunk_boundaries(file: BinaryIO, desired_num_chunks: int, split_special_token: bytes) -> list[int]:
@@ -116,8 +117,11 @@ def train_bpe(
         boundaries = find_chunk_boundaries(f, 1000, b"<|endoftext|>") # use large desire_num_chunks for large dataset
 
     chunk_args = [(input_path, start, end, special_tokens) for start, end in zip(boundaries, boundaries[1:])]
+    total_chunks = len(chunk_args)
     with multiprocessing.Pool(processes=num_processes) as pool:
-        chunk_results = pool.map(process_chunk, chunk_args)
+        chunk_results = []
+        for result in tqdm.tqdm(pool.imap(process_chunk, chunk_args), total=total_chunks, desc="Processing chunks"):
+            chunk_results.append(result)
 
     # get word frequencies in bytes form
     word_bytes_freqs = Counter()  # dict[tuple[int], int]
