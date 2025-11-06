@@ -113,7 +113,7 @@ def train_bpe(
 
     # pre-tokenization
     with open(input_path, "rb") as f:
-        boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
+        boundaries = find_chunk_boundaries(f, 1000, b"<|endoftext|>") # use large desire_num_chunks for large dataset
 
     chunk_args = [(input_path, start, end, special_tokens) for start, end in zip(boundaries, boundaries[1:])]
     with multiprocessing.Pool(processes=num_processes) as pool:
