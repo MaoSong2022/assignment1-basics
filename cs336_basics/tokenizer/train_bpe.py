@@ -1,8 +1,11 @@
+from argparse import ArgumentParser
 import multiprocessing
 import os
 import regex as re
 from typing import BinaryIO
 from collections import Counter, defaultdict
+
+from loguru import logger
 import tqdm
 
 
@@ -123,6 +126,8 @@ def train_bpe(
         for result in tqdm.tqdm(pool.imap(process_chunk, chunk_args), total=total_chunks, desc="Processing chunks"):
             chunk_results.append(result)
 
+    logger.info("complete pre-tokenizing")
+
     # get word frequencies in bytes form
     word_bytes_freqs = Counter()  # dict[tuple[int], int]
     for chunk_result in chunk_results:
@@ -137,6 +142,9 @@ def train_bpe(
         # add to vocab
         vocab[vocab_index] = vocab[max_pair[0]] + vocab[max_pair[1]]
         merges.append((vocab[max_pair[0]], vocab[max_pair[1]]))
+        logger.info(
+            f"vocab index: {vocab_index}, new_token: {vocab[max_pair[0]] + vocab[max_pair[1]]}, count: {counts[max_pair]}"
+        )
 
         # update word_bytes
         counts = merge_pair(max_pair, vocab_index, counts, pair_to_words, word_bytes_freqs)
@@ -145,3 +153,32 @@ def train_bpe(
         vocab_index += 1
 
     return vocab, merges
+
+
+def main():
+    # python cs336_basics/tokenizer/train_bpe.py -i /root/autodl-tmp/data/TinyStoriesV2-GPT4-train.txt -v 10000 -o TinyStories
+    # python cs336_basics/tokenizer/train_bpe.py -i /root/autodl-tmp/data/owt_train.txt -v 32000 -o owt
+    parser = ArgumentParser()
+    parser.add_argument("-i", "--input_path")
+    parser.add_argument("-v", "--vocab_size", type=int)
+    parser.add_argument("-o", "--output")
+    args = parser.parse_args()
+    logger.add(f"{args.output}_output.log", mode="w")
+
+    vocab, merges = train_bpe(args.input_path, args.vocab_size, special_tokens=["<|endoftext|>"], num_processes=10)
+    logger.info("complete training")
+    import json
+
+    serializable_vocab = {k: v.decode("utf-8", errors="ignore") for k, v in vocab.items()}
+    with open(f"{args.output}_vocab.json", "w", encoding="utf-8") as f:
+        json.dump(serializable_vocab, f, indent=4, ensure_ascii=False)
+
+    serializable_merges = [(a.decode("utf-8", errors="ignore"), b.decode("utf-8", errors="ignore")) for a, b in merges]
+    with open(f"{args.output}_merges.txt", "w", encoding="utf-8") as f:
+        for merge in serializable_merges:
+            f.write(f"{merge[0]} {merge[1]}\n")
+    logger.info("complete")
+
+
+if __name__ == "__main__":
+    main()
