@@ -51,13 +51,13 @@ def process_chunk(args: tuple[str, int, int, list[str]]) -> Counter[tuple[int]]:
 
 def compute_pair_counts(
     word_bytes_freqs: dict[tuple[int], int],
-) -> tuple[Counter[tuple[int, int]], defaultdict[tuple[int, int], list[tuple[int]]]]:
+) -> tuple[Counter[tuple[int, int]], defaultdict[tuple[int, int], set[tuple[int]]]]:
     counts = Counter()
-    pair_to_words = defaultdict(list)
+    pair_to_words = defaultdict(set)
     for word_bytes, freq in word_bytes_freqs.items():
         for pair in zip(word_bytes, word_bytes[1:]):
             counts[pair] += freq
-            pair_to_words[pair].append(word_bytes)
+            pair_to_words[pair].add(word_bytes)
     return counts, pair_to_words
 
 
@@ -65,7 +65,7 @@ def merge_pair(
     max_pair: tuple[int, int],
     new_token_id: int,
     counts: Counter[tuple[int, int]],
-    pair_to_words: defaultdict[tuple[int, int], list[tuple[int]]],
+    pair_to_words: defaultdict[tuple[int, int], set[tuple[int]]],
     word_bytes_freqs: Counter[tuple[int]],
 ) -> Counter[tuple[int, int]]:
     old_words = list(pair_to_words[max_pair])
@@ -74,10 +74,12 @@ def merge_pair(
         old_freq = word_bytes_freqs[word]
         del word_bytes_freqs[word]
         for pair in zip(word, word[1:]):
-            if word not in pair_to_words[pair]:
-                continue
-            pair_to_words[pair].remove(word)
+            pair_to_words[pair].discard(word)
             counts[pair] -= old_freq
+            if counts[pair] <= 0:
+                del counts[pair]
+                if not pair_to_words[pair]:
+                    del pair_to_words[pair]
 
         # create new word
         i = 0
@@ -92,12 +94,11 @@ def merge_pair(
         new_word = tuple(new_token_ids)
 
         # update related information
-        word_bytes_freqs[new_word] += old_freq
+        word_bytes_freqs[new_word] = old_freq
         for pair in zip(new_token_ids, new_token_ids[1:]):
             counts[pair] += old_freq
-            pair_to_words[pair].append(new_word)
+            pair_to_words[pair].add(new_word)
 
-    del pair_to_words[max_pair]
     return counts
 
 
