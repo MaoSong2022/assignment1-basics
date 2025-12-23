@@ -138,7 +138,7 @@ class MultiHeadAttention(nn.Module):
             d_head=self.d_model // self.num_heads,
         )
 
-        mask = torch.tril(torch.ones(q.shape[-2], q.shape[-2]))
+        mask = torch.tril(torch.ones(q.shape[-2], q.shape[-2], device=q.device))
 
         attn_output = scaled_dot_product_attention(q, k, v, mask=mask, cos=cos, sin=sin)
         attn_output = rearrange(attn_output, "... num_heads seq_len d_head -> ... seq_len (num_heads d_head)")
@@ -183,7 +183,7 @@ class Model(nn.Module):
 
     def forward(self, token_ids) -> torch.Tensor:
         hidden_states = self.token_embeddings(token_ids)
-        token_positions = torch.arange(hidden_states.shape[-2])
+        token_positions = torch.arange(hidden_states.shape[-2], device=hidden_states.device)
         cos, sin = self.rotary_embedding(hidden_states, token_positions)
 
         for decode_layer in self.layers:
