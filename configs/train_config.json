@@ -1,0 +1,21 @@
+{
+    "project_name": "cs336_assignment1",
+    "run_name": "test2",
+    "epochs": 2,
+    "batch_size": 128,
+    "num_workers": 4,
+    "learning_rate": "1e-5",
+    "eval_interval_steps": 1000,
+    "betas": [
+        0.9,
+        0.95
+    ],
+    "eps": 1e-6,
+    "weight_decay": 0.1,
+    "max_learning_rate": 3e-4,
+    "min_learning_rate": 3e-5,
+    "warmup_iters": 2000,
+    "cosine_cycle_iters": 32000,
+    "max_l2_norm": 1.0,
+    "clipping_eps": 1e-6
+}

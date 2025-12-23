@@ -1,0 +1,4 @@
+{
+    "train_file_path": "/root/autodl-tmp/data/TinyStoriesV2-GPT4-train.npy",
+    "validation_file_path": "/root/autodl-tmp/data/TinyStoriesV2-GPT4-valid.npy"
+}
