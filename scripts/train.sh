@@ -1,0 +1,1 @@
+python cs336_basics/train/train.py --model_config_path configs/model_config.json --data_config_path configs/data_config.json --train_config_path configs/train_config.json
