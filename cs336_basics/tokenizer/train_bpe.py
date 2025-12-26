@@ -4,9 +4,11 @@ import os
 import regex as re
 from typing import BinaryIO
 from collections import Counter, defaultdict
+import json
+import tqdm
 
 from loguru import logger
-import tqdm
+from tokenizers import Tokenizer, models, pre_tokenizers, decoders
 
 
 def find_chunk_boundaries(file: BinaryIO, desired_num_chunks: int, split_special_token: bytes) -> list[int]:
@@ -117,7 +119,7 @@ def train_bpe(
 
     # pre-tokenization
     with open(input_path, "rb") as f:
-        boundaries = find_chunk_boundaries(f, 1000, b"<|endoftext|>") # use large desire_num_chunks for large dataset
+        boundaries = find_chunk_boundaries(f, 1000, b"<|endoftext|>")
 
     chunk_args = [(input_path, start, end, special_tokens) for start, end in zip(boundaries, boundaries[1:])]
     total_chunks = len(chunk_args)
@@ -155,30 +157,92 @@ def train_bpe(
     return vocab, merges
 
 
+def bytes_to_unicode():
+    """
+    Returns list of utf-8 byte and a corresponding list of unicode strings.
+    This is used to ensure the vocab file is human-readable and doesn't
+    contain control characters that break JSON.
+    """
+    bs = list(range(ord("!"), ord("~") + 1)) + list(range(ord("¡"), ord("¬") + 1)) + list(range(ord("®"), ord("ÿ") + 1))
+    cs = bs[:]
+    n = 0
+    for b in range(256):
+        if b not in bs:
+            bs.append(b)
+            cs.append(256 + n)
+            n += 1
+    cs = [chr(n) for n in cs]
+    return dict(zip(bs, cs))
+
+
+def save_full_tokenizer(vocab_path, merges_path, output_path):
+    model = models.BPE.from_file(vocab=vocab_path, merges=merges_path)
+    tokenizer = Tokenizer(model)
+    tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
+    tokenizer.decoder = decoders.ByteLevel()
+
+    # This saves everything into one 'tokenizer.json' file
+    tokenizer.save(output_path)
+
+
 def main():
-    # python cs336_basics/tokenizer/train_bpe.py -i /root/autodl-tmp/data/TinyStoriesV2-GPT4-train.txt -v 10000 -o TinyStories
-    # python cs336_basics/tokenizer/train_bpe.py -i /root/autodl-tmp/data/owt_train.txt -v 32000 -o owt
     parser = ArgumentParser()
     parser.add_argument("-i", "--input_path")
     parser.add_argument("-v", "--vocab_size", type=int)
-    parser.add_argument("-o", "--output")
+    parser.add_argument("-o", "--output_dir")
     args = parser.parse_args()
-    logger.add(f"{args.output}_output.log", mode="w")
+    logger.add(f"logs/{args.output_dir}_output.log", mode="w")
 
+    # 5. Save the output
+    if not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir)
+
+    # 1. Train bpe tokenizer
     vocab, merges = train_bpe(args.input_path, args.vocab_size, special_tokens=["<|endoftext|>"], num_processes=10)
     logger.info("complete training")
-    import json
 
-    serializable_vocab = {k: v.decode("utf-8", errors="ignore") for k, v in vocab.items()}
-    with open(f"{args.output}_vocab.json", "w", encoding="utf-8") as f:
-        json.dump(serializable_vocab, f, indent=4, ensure_ascii=False)
+    # 2. Convert Byte-BPE results to Unicode-String-BPE (Hugging Face style)
+    byte_encoder = bytes_to_unicode()
 
-    serializable_merges = [(a.decode("utf-8", errors="ignore"), b.decode("utf-8", errors="ignore")) for a, b in merges]
-    with open(f"{args.output}_merges.txt", "w", encoding="utf-8") as f:
-        for merge in serializable_merges:
-            f.write(f"{merge[0]} {merge[1]}\n")
-    logger.info("complete")
+    # Map raw bytes to the special 'Ġ' style strings
+    def b_to_s(b_sequence):
+        return "".join(byte_encoder[b] for b in b_sequence)
+
+    # Prepare vocab: { "token_string": id }
+    hf_vocab = {b_to_s(token_bytes): idx for idx, token_bytes in vocab.items()}
+
+    # Prepare merges: [ ("pair_a", "pair_b"), ... ]
+    hf_merges = [(b_to_s(p1), b_to_s(p2)) for p1, p2 in merges]
+
+    # 3. Create the High-Level Tokenizer Object
+    # We initialize the BPE model with our converted maps
+    tokenizer_model = models.BPE(vocab=hf_vocab, merges=hf_merges)
+    tokenizer = Tokenizer(tokenizer_model)
+
+    # 4. Add the necessary "plumbing"
+    # This ensures "Hello world" is handled as "Hello" and " world"
+    # and mapped to the byte-level representations correctly.
+    tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
+    tokenizer.decoder = decoders.ByteLevel()
+
+    # Save the 'Big One' - this includes everything
+    tokenizer_path = os.path.join(args.output_dir, "tokenizer.json")
+    tokenizer.save(tokenizer_path)
+
+    # Also save the legacy files if you need them for GPT2Tokenizer.from_pretrained
+    with open(os.path.join(args.output_dir, "vocab.json"), "w", encoding="utf-8") as f:
+        json.dump(hf_vocab, f, ensure_ascii=False)
+
+    with open(os.path.join(args.output_dir, "merges.txt"), "w", encoding="utf-8") as f:
+        f.write("#version: 0.2\n")
+        for p1, p2 in hf_merges:
+            f.write(f"{p1} {p2}\n")
+
+    logger.info(f"Successfully saved tokenizer to {args.output_dir}")
 
 
 if __name__ == "__main__":
     main()
+
+#
+# python cs336_basics/tokenizer/train_bpe.py -i /root/autodl-tmp/data/owt_train.txt -v 32000 -o owt
