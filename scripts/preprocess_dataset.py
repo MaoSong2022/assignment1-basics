@@ -34,7 +34,7 @@ def main():
 
             # Tokenize当前行
             encoding = tokenizer.encode(line, add_special_tokens=False)
-            token_ids = np.array(encoding.ids, dtype=np.int32)
+            token_ids = np.array(encoding.ids, dtype=np.uint16)
             all_token_ids.append(token_ids)
             total_tokens += len(token_ids)
 
@@ -67,7 +67,3 @@ if __name__ == "__main__":
     main()
 
 
-# python ./scripts/preprocess_dataset.py --tokenizer_path /root/assignment1-basics/hf_tokenizer/tinystories/tokenizer.json --input_filepath /root/autodl-tmp/data/TinyStoriesV2-GPT4-train.txt
-# python ./scripts/preprocess_dataset.py --tokenizer_path /root/assignment1-basics/hf_tokenizer/tinystories/tokenizer.json --input_filepath /root/autodl-tmp/data/TinyStoriesV2-GPT4-valid.txt
-# python ./scripts/preprocess_dataset.py --tokenizer_path /root/assignment1-basics/hf_tokenizer/OWT-32k/tokenizer.json --input_filepath /root/autodl-tmp/data/owt_train.txt
-# python ./scripts/preprocess_dataset.py --tokenizer_path /root/assignment1-basics/hf_tokenizer/OWT-32k/tokenizer.json --input_filepath /root/autodl-tmp/data/owt_valid.txt
