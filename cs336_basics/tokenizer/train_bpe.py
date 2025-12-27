@@ -9,6 +9,8 @@ import tqdm
 
 from loguru import logger
 from tokenizers import Tokenizer, models, pre_tokenizers, decoders
+from memory_profiler import profile
+import cProfile
 
 
 def find_chunk_boundaries(file: BinaryIO, desired_num_chunks: int, split_special_token: bytes) -> list[int]:
@@ -144,9 +146,6 @@ def train_bpe(
         # add to vocab
         vocab[vocab_index] = vocab[max_pair[0]] + vocab[max_pair[1]]
         merges.append((vocab[max_pair[0]], vocab[max_pair[1]]))
-        logger.info(
-            f"vocab index: {vocab_index}, new_token: {vocab[max_pair[0]] + vocab[max_pair[1]]}, count: {counts[max_pair]}"
-        )
 
         # update word_bytes
         counts = merge_pair(max_pair, vocab_index, counts, pair_to_words, word_bytes_freqs)
@@ -184,14 +183,14 @@ def save_full_tokenizer(vocab_path, merges_path, output_path):
     # This saves everything into one 'tokenizer.json' file
     tokenizer.save(output_path)
 
-
+@profile
 def main():
     parser = ArgumentParser()
     parser.add_argument("-i", "--input_path")
     parser.add_argument("-v", "--vocab_size", type=int)
     parser.add_argument("-o", "--output_dir")
     args = parser.parse_args()
-    logger.add(f"logs/{args.output_dir}_output.log", mode="w")
+    logger.add(f"{args.output_dir}/output.log", mode="w")
 
     # 5. Save the output
     if not os.path.exists(args.output_dir):
@@ -242,7 +241,12 @@ def main():
 
 
 if __name__ == "__main__":
+    prof = cProfile.Profile()
+    prof.enable()
+
     main()
 
-#
-# python cs336_basics/tokenizer/train_bpe.py -i /root/autodl-tmp/data/owt_train.txt -v 32000 -o owt
+    prof.disable()
+    # Save the data to a file
+    prof.dump_stats("TinyStories.prof")
+
