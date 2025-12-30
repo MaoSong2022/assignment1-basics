@@ -94,6 +94,8 @@ def main():
     global_step = 0
     start_train_time = time.time()
 
+    vocab_size = model_config["vocab_size"]
+
     for epoch in range(train_config["epochs"]):
         epoch_start_time = time.time()  # record time used of current epoch
         model.train()
@@ -137,6 +139,7 @@ def main():
                     "train/batch_time": batch_time,  # 批次耗时
                     "train/global_step": global_step,  # 全局步数
                     "train/epoch": epoch + 1,  # 当前epoch
+                    "train/tokens_per_second": inputs.size(0) * model_config["max_seq_len"] / batch_time,
                 },
                 step=global_step,
             )  # step指定为全局步数，保证可视化横轴对齐
@@ -145,7 +148,6 @@ def main():
                 avg_loss = train_loss / (batch_idx + 1)
                 print(f"Train Batch {batch_idx} | LR: {current_lr:.6f} | Avg Loss: {avg_loss:.4f}")
             global_step += 1
-
 
             if global_step > 0 and global_step % train_config["eval_interval_steps"] == 0:
                 model.eval()
@@ -175,9 +177,8 @@ def main():
                     best_val_loss = avg_val_loss
                     save_path = "best_llm_model.pt"
                     serialization.save_checkpoint(model, optimizer, epoch, save_path)
-                    print(f"最优模型已保存至: {save_path}")
+                    print(f"best checkpoint has been saved to: {save_path}")
 
-                    # 记录最优模型信息
                     wandb.log(
                         {
                             "model/best_val_loss": best_val_loss,
@@ -189,10 +190,12 @@ def main():
 
         avg_train_loss = train_loss / len(train_loader)
         epoch_train_time = time.time() - epoch_start_time
-        wandb.log({
-            "train/epoch_avg_loss": avg_train_loss,  # Epoch平均训练损失
-            "train/epoch_time": epoch_train_time,  # Epoch训练耗时
-        })
+        wandb.log(
+            {
+                "train/epoch_avg_loss": avg_train_loss,
+                "train/epoch_time": epoch_train_time,
+            }
+        )
 
     total_train_time = time.time() - start_train_time
     wandb.log(
@@ -203,7 +206,7 @@ def main():
     )
 
     wandb.finish()
-    print(f"\n训练完成！总耗时: {total_train_time / 3600:.2f} 小时")
+    print(f"\nTraining is complete, total training time: {total_train_time / 3600:.2f}")
     return model
 
 
