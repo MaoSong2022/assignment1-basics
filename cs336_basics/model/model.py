@@ -193,3 +193,29 @@ class Model(nn.Module):
         logits = self.lm_head(hidden_states)
 
         return logits
+
+    @torch.no_grad()
+    def generate(
+        self,
+        token_ids: torch.Tensor,
+        max_new_tokens: int,
+        temperature=1.0,
+        top_k=None,
+        eos_token_id: int = 0,
+    ) -> torch.Tensor:
+        # TODO: support top-p sampling
+        for _ in range(max_new_tokens):
+            logits = self(token_ids)
+            logits = logits[:, -1, :] / temperature
+
+            if top_k is not None:
+                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+                logits[logits < v[:, [-1]]] = -float("Inf")
+
+            probs = utils.softmax(logits, dim=-1)
+            new_token_id = torch.multinomial(probs, num_samples=1)
+            token_ids = torch.cat((token_ids, new_token_id), dim=1)
+            if new_token_id == eos_token_id:
+                break
+
+        return token_ids
