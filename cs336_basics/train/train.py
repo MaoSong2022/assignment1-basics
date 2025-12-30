@@ -99,10 +99,9 @@ def main():
         model.train()
 
         train_loss = 0.0
-        for batch_idx, batch_token_ids in enumerate(train_loader):
+        for batch_idx, (inputs, targets) in enumerate(train_loader):
             batch_start_time = time.time()
-
-            batch_token_ids = batch_token_ids.to(device)
+            inputs, targets = inputs.to(device), targets.to(device)
 
             # update learning rate
             current_lr = MyOptimizer.get_lr_cosine_schedule(
@@ -116,12 +115,8 @@ def main():
                 param_group["lr"] = current_lr
 
             # forward pass
-            logits = model(batch_token_ids)
-            logits = logits[..., :-1, :].contiguous()
-            labels = batch_token_ids[:, 1:].contiguous()
-            labels = labels.view(-1)
-
-            loss = utils.cross_entropy_loss(logits.view(-1, logits.size(-1)), labels)
+            logits = model(inputs)
+            loss = utils.cross_entropy_loss(logits.view(-1, vocab_size), targets.view(-1))
 
             train_loss += loss.item()
 
@@ -156,18 +151,12 @@ def main():
                 model.eval()
                 val_loss = 0.0
                 with torch.no_grad():
-                    for batch_idx, batch_token_ids in enumerate(val_loader):
-                        batch_token_ids = batch_token_ids.to(device)
+                    for batch_idx, (inputs, targets) in enumerate(val_loader):
+                        inputs, targets = inputs.to(device), targets.to(device)
                         # forward pass
-                        logits = model(batch_token_ids)
-                        # (batch_size, seq_len, vocab_size)
-                        logits = logits[..., :-1, :].contiguous()
-                        logits = logits.view(-1, logits.size(-1))
-                        labels = batch_token_ids[:, 1:].contiguous().view(-1)
-                        labels = batch_token_ids[:, 1:].contiguous()
-                        labels = labels.view(-1)
+                        logits = model(inputs)
 
-                        loss = utils.cross_entropy_loss(logits, labels)
+                        loss = utils.cross_entropy_loss(logits.view(-1, vocab_size), targets.view(-1))
 
                         val_loss += loss.item()
 
