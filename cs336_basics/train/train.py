@@ -51,15 +51,15 @@ def main():
     model.to(device)
 
     # initialize data set
-    train_dataset = MemmapDataset(
+    train_dataset = data.MemmapDataset(
         file_path=data_config["train_file_path"],
         seq_len=model_config["max_seq_len"],
-        dtype=np.int32,
+        dtype=np.uint16,
     )
-    validation_dataset = MemmapDataset(
+    validation_dataset = data.MemmapDataset(
         file_path=data_config["validation_file_path"],
         seq_len=model_config["max_seq_len"],
-        dtype=np.int32,
+        dtype=np.uint16,
     )
 
     # initialize training stuff
