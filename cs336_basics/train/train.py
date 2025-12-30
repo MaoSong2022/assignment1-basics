@@ -3,67 +3,14 @@ import wandb
 import argparse
 import json
 import numpy as np
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 import torch
 
 import cs336_basics.model.model as transformer_model
-from cs336_basics.train import optimizer as MyOptimizer
+from cs336_basics.optimizer import optimizer as MyOptimizer
 from cs336_basics.train import serialization
 from cs336_basics.model import utils
-
-
-class MemmapDataset(Dataset):
-    def __init__(
-        self,
-        file_path: str,
-        seq_len: int,
-        stride: int = None,
-        shuffle: bool = False,
-        pad_id: int = 0,
-        dtype=np.int32,
-    ):
-        self.file_path = file_path
-        self.seq_len = seq_len
-        self.stride = stride if stride is not None else seq_len
-        self.pad_id = pad_id
-        self.shuffle = shuffle
-
-        self.memmap_arr = np.lib.format.open_memmap(file_path, mode="r", dtype=dtype)
-
-        self.total_length = len(self.memmap_arr)
-
-        self.sample_starts = []
-        start = 0
-        while start + self.seq_len <= self.total_length:
-            self.sample_starts.append(start)
-            start += self.stride
-
-        # 处理最后一个不足seq_len的片段（填充）
-        if start < self.total_length:
-            self.sample_starts.append(start)
-
-        self.num_samples = len(self.sample_starts)
-
-        print(f"数据集加载完成：样本数={self.num_samples}，序列长度={self.total_length}")
-
-        if self.shuffle:
-            self.sample_indices = np.random.permutation(self.num_samples)
-        else:
-            self.sample_indices = np.arange(self.num_samples)
-
-    def __len__(self):
-        return self.num_samples
-
-    def __getitem__(self, idx):
-        start = self.sample_starts[self.sample_indices[idx]]
-        end = start + self.seq_len
-        token_ids = self.memmap_arr[start:end]
-
-        if len(token_ids) < self.seq_len:
-            pad_length = self.seq_len - len(token_ids)
-            token_ids = np.pad(token_ids, (0, pad_length), mode="constant", constant_values=self.pad_id)
-
-        return torch.tensor(token_ids, dtype=torch.long)
+from cs336_basics.dataset import data
 
 
 def main():
