@@ -14,8 +14,8 @@ from cs336_basics.model import model
 from cs336_basics.model import utils as model_utils
 from cs336_basics.tokenizer.train_bpe import train_bpe
 from cs336_basics.tokenizer.tokenizer import BPETokenizer
-from cs336_basics.train.data import get_batch
-from cs336_basics.train.optimizer import AdamW, get_lr_cosine_schedule
+from cs336_basics.dataset.data import get_batch
+from cs336_basics.optimizer.optimizer import AdamW, get_lr_cosine_schedule
 from cs336_basics.train.serialization import save_checkpoint, load_checkpoint
 
 def run_linear(
