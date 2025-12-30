@@ -183,6 +183,7 @@ def save_full_tokenizer(vocab_path, merges_path, output_path):
     # This saves everything into one 'tokenizer.json' file
     tokenizer.save(output_path)
 
+
 @profile
 def main():
     parser = ArgumentParser()
@@ -249,4 +250,3 @@ if __name__ == "__main__":
     prof.disable()
     # Save the data to a file
     prof.dump_stats("TinyStories.prof")
-
