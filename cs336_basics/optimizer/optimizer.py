@@ -20,13 +20,12 @@ class SGD(torch.optim.Optimizer):
                     continue
 
                 state = self.state[p]
-                t = state.get("t", 0) # iteration number
+                t = state.get("t", 0)  # iteration number
                 grad = p.grad.data
                 p.data -= lr / math.sqrt(t + 1) * grad
                 state["t"] = t + 1
 
         return loss
-        
 
 
 class AdamW(torch.optim.Optimizer):
