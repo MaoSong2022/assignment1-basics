@@ -175,7 +175,7 @@ def main():
                 # save the checkpoint
                 if avg_val_loss < best_val_loss:
                     best_val_loss = avg_val_loss
-                    save_path = "best_llm_model.pt"
+                    save_path = f"checkpoints/{train_config['run_name']}/best_llm_model.pt"
                     serialization.save_checkpoint(model, optimizer, epoch, save_path)
                     print(f"best checkpoint has been saved to: {save_path}")
 
