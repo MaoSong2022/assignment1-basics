@@ -80,7 +80,7 @@ def main():
 
     optimizer = MyOptimizer.AdamW(
         model.parameters(),
-        lr=train_config["learning_rate"],
+        lr=train_config["max_learning_rate"],
         betas=tuple(train_config["betas"]),
         weight_decay=train_config["weight_decay"],
         eps=train_config["eps"],
