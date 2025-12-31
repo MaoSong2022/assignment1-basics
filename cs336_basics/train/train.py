@@ -13,13 +13,67 @@ from cs336_basics.model import utils
 from cs336_basics.dataset import data
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model_config_path", type=str)
-    parser.add_argument("--data_config_path", type=str)
-    parser.add_argument("--train_config_path", type=str)
+def get_args():
+    parser = argparse.ArgumentParser(
+        description="Transformer Training Configuration", formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+
+    # --- Config File Support ---
+    parser.add_argument("--config", type=str, help="Path to a JSON config file to load args from")
+
+    # --- Project Metadata ---
+    group_gen = parser.add_argument_group("Metadata")
+    group_gen.add_argument("--project_name", type=str, default="cs336_assignment1")
+    group_gen.add_argument("--run_name", type=str, default="tiny_story_run_5e-1")
+
+    # --- Data Paths ---
+    group_data = parser.add_argument_group("Data")
+    group_data.add_argument("--train_file_path", type=str, required=False)
+    group_data.add_argument("--valid_file_path", type=str, required=False)
+
+    # --- Model Architecture ---
+    group_arch = parser.add_argument_group("Architecture")
+    group_arch.add_argument("--vocab_size", type=int, default=10000)
+    group_arch.add_argument("--num_layers", type=int, default=4)
+    group_arch.add_argument("--d_model", type=int, default=512)
+    group_arch.add_argument("--num_heads", type=int, default=16)
+    group_arch.add_argument("--d_ff", type=int, default=1344)
+    group_arch.add_argument("--max_seq_len", type=int, default=256)
+    group_arch.add_argument("--theta", type=float, default=10000, help="Base for RoPE")
+
+    # --- Training & Optimization ---
+    group_train = parser.add_argument_group("Training")
+    group_train.add_argument("--epochs", type=int, default=1)
+    group_train.add_argument("--batch_size", type=int, default=512)
+    group_train.add_argument("--num_workers", type=int, default=4)
+    group_train.add_argument("--eval_interval_steps", type=int, default=500)
+    group_train.add_argument("--betas", type=float, nargs=2, default=[0.9, 0.95])
+    group_train.add_argument("--adamw_eps", type=float, default=1e-8)
+    group_train.add_argument("--weight_decay", type=float, default=0.1)
+    group_train.add_argument("--max_learning_rate", type=float, default=5e-1)
+    group_train.add_argument("--min_learning_rate", type=float, default=5e-5)
+    group_train.add_argument("--warmup_iters", type=int, default=500)
+    group_train.add_argument("--cosine_cycle_iters", type=int, default=4000)
+    group_train.add_argument("--max_l2_norm", type=float, default=1.0)
+    group_train.add_argument("--clipping_eps", type=float, default=1e-6)
 
     args = parser.parse_args()
+
+    if args.config:
+        with open(args.config, "r") as f:
+            config_dict = json.load(f)
+            # Override defaults with JSON values
+            for key, value in config_dict.items():
+                if hasattr(args, key):
+                    setattr(args, key, value)
+                else:
+                    print(f"Warning: Unknown key in config file: {key}")
+
+    return args
+
+
+def main():
+    args = get_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if torch.cuda.is_available():
@@ -27,76 +81,71 @@ def main():
     else:
         print("WARNING: Training on CPU. This will be extremely slow.")
 
-    with open(args.model_config_path) as f:
-        model_config = json.load(f)
-
-    with open(args.data_config_path) as f:
-        data_config = json.load(f)
-
-    with open(args.train_config_path) as f:
-        train_config = json.load(f)
-
     wandb.init(
-        project=train_config["project_name"],
-        name=train_config["run_name"],
-        config={
-            **model_config,
-            **data_config,
-            **train_config,
-        },
+        project=args.project_name,
+        name=args.run_name,
+        config=vars(args),
     )
 
     # initialize model
-    model = transformer_model.Model(**model_config)
+    model = transformer_model.Model(
+        vocab_size=args.vocab_size,
+        num_layers=args.num_layers,
+        d_model=args.d_model,
+        num_heads=args.num_heads,
+        d_ff=args.d_ff,
+        max_seq_len=args.max_seq_len,
+        theta=args.theta,
+    )
     model.to(device)
 
     # initialize data set
     train_dataset = data.MemmapDataset(
-        file_path=data_config["train_file_path"],
-        seq_len=model_config["max_seq_len"],
+        file_path=args.train_file_path,
+        seq_len=args.max_seq_len,
         dtype=np.uint16,
     )
     validation_dataset = data.MemmapDataset(
-        file_path=data_config["validation_file_path"],
-        seq_len=model_config["max_seq_len"],
+        file_path=args.validation_file_path,
+        seq_len=args.max_seq_len,
         dtype=np.uint16,
     )
 
     # initialize training stuff
     train_loader = DataLoader(
         dataset=train_dataset,
-        batch_size=train_config["batch_size"],
+        batch_size=args.batch_size,
         shuffle=True,
-        num_workers=train_config["num_workers"],
+        num_workers=args.num_workers,
         pin_memory=True,
     )
     val_loader = DataLoader(
         dataset=validation_dataset,
-        batch_size=train_config["batch_size"],
+        batch_size=args.batch_size,
         shuffle=False,
-        num_workers=train_config["num_workers"],
+        num_workers=args.num_workers,
         pin_memory=True,
     )
 
     optimizer = MyOptimizer.AdamW(
         model.parameters(),
-        lr=train_config["max_learning_rate"],
-        betas=tuple(train_config["betas"]),
-        weight_decay=train_config["weight_decay"],
-        eps=train_config["eps"],
+        lr=args.max_learning_rate,
+        betas=tuple(args.betas),
+        weight_decay=args.weight_decay,
+        eps=args.adamw_eps,
     )
 
     steps_per_epoch = len(train_loader)
-    total_training_steps = train_config["epochs"] * steps_per_epoch
+    total_training_steps = args.epochs * steps_per_epoch
     print({"total_training_steps": total_training_steps})
 
     best_val_loss = float("inf")
     global_step = 0
     start_train_time = time.time()
 
-    vocab_size = model_config["vocab_size"]
+    vocab_size =args.vocab_size
 
-    for epoch in range(train_config["epochs"]):
+    for epoch in range(args.epochs):
         epoch_start_time = time.time()  # record time used of current epoch
         model.train()
 
@@ -108,10 +157,10 @@ def main():
             # update learning rate
             current_lr = MyOptimizer.get_lr_cosine_schedule(
                 global_step,
-                max_learning_rate=train_config["max_learning_rate"],
-                min_learning_rate=train_config["min_learning_rate"],
-                warmup_iters=train_config["warmup_iters"],
-                cosine_cycle_iters=train_config["cosine_cycle_iters"],
+                max_learning_rate=args.max_learning_rate,
+                min_learning_rate=args.min_learning_rate,
+                warmup_iters=args.warmup_iters,
+                cosine_cycle_iters=args.cosine_cycle_iters,
             )
             for param_group in optimizer.param_groups:
                 param_group["lr"] = current_lr
@@ -126,8 +175,8 @@ def main():
             loss.backward()
             utils.gradient_clipping(
                 model.parameters(),
-                max_l2_norm=train_config["max_l2_norm"],
-                eps=train_config["clipping_eps"],
+                max_l2_norm=args.max_l2_norm,
+                eps=args.clipping_eps,
             )
             optimizer.step()
 
@@ -139,7 +188,7 @@ def main():
                     "train/batch_time": batch_time,  # 批次耗时
                     "train/global_step": global_step,  # 全局步数
                     "train/epoch": epoch + 1,  # 当前epoch
-                    "train/tokens_per_second": inputs.size(0) * model_config["max_seq_len"] / batch_time,
+                    "train/tokens_per_second": inputs.size(0) * args.max_seq_len / batch_time,
                 },
                 step=global_step,
             )  # step指定为全局步数，保证可视化横轴对齐
@@ -149,7 +198,7 @@ def main():
                 print(f"Train Batch {batch_idx} | LR: {current_lr:.6f} | Avg Loss: {avg_loss:.4f}")
             global_step += 1
 
-            if global_step > 0 and global_step % train_config["eval_interval_steps"] == 0:
+            if global_step > 0 and global_step % args.eval_interval_steps == 0:
                 model.eval()
                 val_loss = 0.0
                 with torch.no_grad():
@@ -175,7 +224,7 @@ def main():
                 # save the checkpoint
                 if avg_val_loss < best_val_loss:
                     best_val_loss = avg_val_loss
-                    save_path = f"checkpoints/{train_config['run_name']}/best_llm_model.pt"
+                    save_path = f"checkpoints/{args.run_name}/best_llm_model.pt"
                     serialization.save_checkpoint(model, optimizer, epoch, save_path)
                     print(f"best checkpoint has been saved to: {save_path}")
 
