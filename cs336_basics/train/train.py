@@ -106,7 +106,7 @@ def main():
         dtype=np.uint16,
     )
     validation_dataset = data.MemmapDataset(
-        file_path=args.validation_file_path,
+        file_path=args.valid_file_path,
         seq_len=args.max_seq_len,
         dtype=np.uint16,
     )
