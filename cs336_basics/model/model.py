@@ -201,21 +201,47 @@ class Model(nn.Module):
         max_new_tokens: int,
         temperature=1.0,
         top_k=None,
+        top_p=None,
         eos_token_id: int = 0,
     ) -> torch.Tensor:
-        # TODO: support top-p sampling
+        self.eval()
+        batch_size = token_ids.size(0)
+        device = token_ids.device
+        finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
+        
         for _ in range(max_new_tokens):
             logits = self(token_ids)
-            logits = logits[:, -1, :] / temperature
+            next_token_logits = logits[:, -1, :] / temperature
 
-            if top_k is not None:
-                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-                logits[logits < v[:, [-1]]] = -float("Inf")
+            if top_k is not None and top_k > 0:
+                indices_to_remove = next_token_logits < torch.topk(next_token_logits, top_k)[0][..., -1, None]
+                next_token_logits[indices_to_remove] = -float("Inf")
 
-            probs = utils.softmax(logits, dim=-1)
-            new_token_id = torch.multinomial(probs, num_samples=1)
-            token_ids = torch.cat((token_ids, new_token_id), dim=1)
-            if new_token_id == eos_token_id:
+            if top_p is not None and 0.0 < top_p < 1.0:
+                sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True, dim=-1)
+                cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
+
+                # Mask tokens where cumulative prob exceeds top_p
+                sorted_indices_to_remove = cumulative_probs > top_p
+                # Shift mask right to keep the first token that exceeds the threshold
+                sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+                sorted_indices_to_remove[..., 0] = False
+
+                # Scatter the mask back to the original logit order
+                for b in range(batch_size):
+                    indices_to_remove = sorted_indices[b][sorted_indices_to_remove[b]]
+                    next_token_logits[b, indices_to_remove] = -float("Inf")
+
+            # Sample
+            probs = torch.softmax(next_token_logits, dim=-1)
+            next_tokens = torch.multinomial(probs, num_samples=1)  # (batch, 1)
+
+            # Stop if all sequences hit EOS (only if batch_size > 1)
+            finished |= next_tokens.squeeze(-1) == eos_token_id
+
+            token_ids = torch.cat([token_ids, next_tokens], dim=-1)
+
+            if finished.all():
                 break
 
         return token_ids
