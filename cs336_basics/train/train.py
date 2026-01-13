@@ -46,6 +46,7 @@ def get_args():
     group_train = parser.add_argument_group("Training")
     group_train.add_argument("--epochs", type=int, default=1)
     group_train.add_argument("--batch_size", type=int, default=512)
+    group_train.add_argument("--accumulation_steps", type=int, default=4)
     group_train.add_argument("--num_workers", type=int, default=4)
     group_train.add_argument("--eval_interval_steps", type=int, default=500)
     group_train.add_argument("--betas", type=float, nargs=2, default=[0.9, 0.95])
@@ -145,7 +146,7 @@ def main():
     global_step = 0
     start_train_time = time.time()
 
-    vocab_size =args.vocab_size
+    vocab_size = args.vocab_size
 
     for epoch in range(args.epochs):
         epoch_start_time = time.time()  # record time used of current epoch
@@ -170,17 +171,23 @@ def main():
             # forward pass
             logits = model(inputs)
             loss = utils.cross_entropy_loss(logits.view(-1, vocab_size), targets.view(-1))
+            loss = loss / args.accumulation_steps
 
             train_loss += loss.item()
 
-            optimizer.zero_grad()
             loss.backward()
-            utils.gradient_clipping(
-                model.parameters(),
-                max_l2_norm=args.max_l2_norm,
-                eps=args.clipping_eps,
-            )
-            optimizer.step()
+
+            is_last_batch = (batch_idx + 1) == len(train_loader)
+
+            if (batch_idx + 1) % args.accumulation_steps == 0 or is_last_batch:
+                utils.gradient_clipping(
+                    model.parameters(),
+                    max_l2_norm=args.max_l2_norm,
+                    eps=args.clipping_eps,
+                )
+                optimizer.step()
+                optimizer.zero_grad(set_to_none=True)
+                global_step += 1
 
             batch_time = time.time() - batch_start_time
             wandb.log(
