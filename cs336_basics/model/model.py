@@ -208,7 +208,7 @@ class Model(nn.Module):
         batch_size = token_ids.size(0)
         device = token_ids.device
         finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
-        
+
         for _ in range(max_new_tokens):
             logits = self(token_ids)
             next_token_logits = logits[:, -1, :] / temperature
