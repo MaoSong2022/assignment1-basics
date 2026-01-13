@@ -53,13 +53,14 @@ class MemmapDataset(Dataset):
 
     def __getitem__(self, idx):
         start = self.sample_indices[idx] * self.stride
-        chunk = self.memmap_arr[start : start + self.seq_len + 1].astype(np.int64)
+        chunk = self.memmap_arr[start : start + self.seq_len + 1]
 
-        if len(chunk) < self.seq_len + 1:
-            padding = np.full((self.seq_len + 1) - len(chunk), self.pad_id, dtype=np.int64)
-            chunk = np.concatenate([chunk, padding])
+        tensor = torch.from_numpy(chunk.astype(np.int32))
 
-        full_tensor = torch.from_numpy(chunk)
-        inputs, targets = full_tensor[:-1], full_tensor[1:]
+        if tensor.size(0) < self.seq_len + 1:
+            padding = torch.full(((self.seq_len + 1) - tensor.size(0),), self.pad_id, dtype=torch.int32)
+            tensor = torch.cat([tensor, padding])
 
-        return inputs, targets
+        tensor = tensor.long()
+
+        return tensor[:-1], tensor[1:]
