@@ -57,6 +57,7 @@ def get_args():
     group_train.add_argument("--cosine_cycle_iters", type=int, default=4000)
     group_train.add_argument("--max_l2_norm", type=float, default=1.0)
     group_train.add_argument("--clipping_eps", type=float, default=1e-6)
+    group_train.add_argument("--training_steps", type=int, default=None, help="total training steps")
 
     args = parser.parse_args()
 
@@ -137,7 +138,7 @@ def main():
     )
 
     steps_per_epoch = len(train_loader)
-    total_training_steps = args.epochs * steps_per_epoch
+    total_training_steps = args.epochs * steps_per_epoch if args.training_steps is None else args.training_steps
     print({"total_training_steps": total_training_steps})
 
     best_val_loss = float("inf")
@@ -197,7 +198,6 @@ def main():
             if batch_idx % 100 == 0:
                 avg_loss = train_loss / (batch_idx + 1)
                 print(f"Train Batch {batch_idx} | LR: {current_lr:.6f} | Avg Loss: {avg_loss:.4f}")
-            global_step += 1
 
             if global_step > 0 and global_step % args.eval_interval_steps == 0:
                 model.eval()
@@ -239,6 +239,14 @@ def main():
                         },
                         step=global_step,
                     )
+
+            # support customized training iterations
+            if args.training_steps is not None and args.training_steps > 0 and global_step > args.training_steps:
+                break
+
+        # support customized training iterations
+        if args.training_steps is not None and args.training_steps > 0 and global_step > args.training_steps:
+            break
 
         avg_train_loss = train_loss / len(train_loader)
         epoch_train_time = time.time() - epoch_start_time
