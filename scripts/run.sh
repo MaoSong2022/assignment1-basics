@@ -22,13 +22,36 @@ echo $TRAIN_PATH
 echo $VAL_PATH
 
 # Execution
-echo "Starting job at $(date)"
+# echo "Starting job at $(date)"
+# python cs336_basics/train/train.py \
+#     --project_name "cs336_assignment1" \
+#     --run_name "OWT" \
+#     --train_file_path "$TRAIN_PATH" \
+#     --valid_file_path "$VAL_PATH" \
+#     --batch_size 256 \
+#     --training_steps 4153 \
+#     --vocab_size 32000 \
+#     --cosine_cycle_iters 4000 \
+#     --eval_interval_steps 500 \
+#     --max_learning_rate 1e-2 \
+#     --epochs 1 \
+#     --num_workers 4 \
+#     --d_model 512 \
+#     --num_heads 16 \
+#     --betas 0.9 0.95
+# echo "Finished at $(date)"
+
+
+# OWT dataset, the vocab_size and training steps are required to be modified
 python cs336_basics/train/train.py \
     --project_name "cs336_assignment1" \
-    --run_name "SiLU_activation" \
+    --run_name "OWT" \
     --train_file_path "$TRAIN_PATH" \
     --valid_file_path "$VAL_PATH" \
-    --batch_size 512 \
+    --batch_size 128 \
+    --accumulation_steps 4\
+    --training_steps 4153 \
+    --vocab_size 32000 \
     --cosine_cycle_iters 4000 \
     --eval_interval_steps 500 \
     --max_learning_rate 1e-2 \
